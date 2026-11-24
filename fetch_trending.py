@@ -106,6 +106,11 @@ def fetch(since):
     req = urllib.request.Request(url, headers=HEADERS)
     with urllib.request.urlopen(req, timeout=25) as resp:
         html = resp.read().decode("utf-8", "ignore")
+    if _ROW_SPLIT.split(" ")[0].replace("<", "") not in html and "Box-row" not in html:
+        title_m = re.search(r"<title>(.*?)</title>", html, re.S)
+        title = title_m.group(1).strip()[:120] if title_m else "(no title)"
+        print(f"[DEBUG] {since}: no Box-row in page. len={len(html)} title={title!r}")
+        print(f"[DEBUG] head={html[:300]!r}")
     repos = parse_trending_html(html, since)
     if not repos:
         raise RuntimeError(f"no rows parsed for {since} (page structure changed?)")
