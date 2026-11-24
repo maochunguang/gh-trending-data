@@ -29,6 +29,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Fetch trending data
+        env:
+          GH_TOKEN: ${{ github.token }}   # 认证请求，避免匿名数据中心流量被拦
         run: python3 fetch_trending.py
 
       - name: Commit & push to GitHub

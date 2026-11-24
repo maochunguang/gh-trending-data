@@ -20,11 +20,14 @@ import re
 import urllib.request
 from datetime import datetime, timezone
 
+# Actions 里注入 github.token（认证请求避免匿名数据中心流量被给验证页）
+GH_TOKEN = os.environ.get("GH_TOKEN", "")
+
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "trending")
 PERIODS = ["daily", "weekly", "monthly"]
 LIMIT = 25
 
-HEADERS = {
+_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
@@ -32,6 +35,8 @@ HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
 }
+if GH_TOKEN:
+    _HEADERS["Authorization"] = f"Bearer {GH_TOKEN}"
 
 # trending 页面结构（与 trendradar/crawler/github_trending.py 同步，2026-11 实测）
 _ROW_SPLIT = '<article class="Box-row">'
@@ -103,10 +108,10 @@ def parse_trending_html(html, since):
 
 def fetch(since):
     url = f"https://github.com/trending/{since}"
-    req = urllib.request.Request(url, headers=HEADERS)
+    req = urllib.request.Request(url, headers=_HEADERS)
     with urllib.request.urlopen(req, timeout=25) as resp:
         html = resp.read().decode("utf-8", "ignore")
-    if _ROW_SPLIT.split(" ")[0].replace("<", "") not in html and "Box-row" not in html:
+    if "Box-row" not in html:
         title_m = re.search(r"<title>(.*?)</title>", html, re.S)
         title = title_m.group(1).strip()[:120] if title_m else "(no title)"
         print(f"[DEBUG] {since}: no Box-row in page. len={len(html)} title={title!r}")
