@@ -112,10 +112,19 @@ def fetch(since):
     with urllib.request.urlopen(req, timeout=25) as resp:
         html = resp.read().decode("utf-8", "ignore")
     if "Box-row" not in html:
-        title_m = re.search(r"<title>(.*?)</title>", html, re.S)
-        title = title_m.group(1).strip()[:120] if title_m else "(no title)"
-        print(f"[DEBUG] {since}: no Box-row in page. len={len(html)} title={title!r}")
-        print(f"[DEBUG] head={html[:300]!r}")
+        print(f"[DEBUG] {since}: len={len(html)}")
+        # 找数据载体：embedded JSON / repo 链接 / article 变体
+        for pat, label in [
+            (r'application/json"[^>]*data-target="react-app.embeddedData"', "embeddedData"),
+            (r'<article[^>]{0,120}', "article tags"),
+            (r'<h2[^>]*>.{0,200}', "h2 sample"),
+        ]:
+            found = re.findall(pat, html)
+            print(f"[DEBUG] {label}: {len(found)} hits, first: {found[0][:200] if found else '-'}")
+        # 仓库链接样本
+        links = re.findall(r'href="(/[^"]+/[^"]+)"[^>]*>', html)
+        repoish = [l for l in links if "/" in l[1:] and l.count("/") == 2 and "." not in l.split("/")[-1]][:10]
+        print(f"[DEBUG] repoish links: {repoish}")
     repos = parse_trending_html(html, since)
     if not repos:
         raise RuntimeError(f"no rows parsed for {since} (page structure changed?)")
