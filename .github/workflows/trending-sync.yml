@@ -33,7 +33,7 @@ jobs:
         # fetch_trending.py 检测到 CSR 骨架页时自动用无头浏览器渲染
         run: |
           pip install playwright --quiet
-          playwright install chromium --with-deps --quiet
+          playwright install chromium --with-deps
 
       - name: Fetch trending data
         env:
