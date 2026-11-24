@@ -107,27 +107,22 @@ def parse_trending_html(html, since):
 
 
 def fetch(since):
+    """抓取页面：数据中心 IP 被 GitHub 分流到 CSR 新版 UI（无 SSR 数据），
+    需要 Playwright 渲染；本地/住宅网络拿到 SSR 老版页时直接静态解析。"""
     url = f"https://github.com/trending/{since}"
     req = urllib.request.Request(url, headers=_HEADERS)
-    with urllib.request.urlopen(req, timeout=25) as resp:
-        html = resp.read().decode("utf-8", "ignore")
+    try:
+        with urllib.request.urlopen(req, timeout=25) as resp:
+            html = resp.read().decode("utf-8", "ignore")
+    except Exception as e:
+        print(f"[WARN] {since}: static fetch failed: {e}")
+        html = ""
+
     if "Box-row" not in html:
-        print(f"[DEBUG] {since}: len={len(html)}")
-        # 找数据载体：embedded JSON / repo 链接 / article 变体
-        for pat, label in [
-            (r'application/json"[^>]*data-target="react-app.embeddedData"', "embeddedData"),
-            (r'<article[^>]{0,120}', "article tags"),
-            (r'<h2[^>]*>.{0,200}', "h2 sample"),
-        ]:
-            found = re.findall(pat, html)
-            print(f"[DEBUG] {label}: {len(found)} hits, first: {found[0][:200] if found else '-'}")
-        # 仓库链接样本
-        links = re.findall(r'href="(/[^"]+/[^"]+)"[^>]*>', html)
-        repoish = [l for l in links if "/" in l[1:] and l.count("/") == 2 and "." not in l.split("/")[-1]][:10]
-        print(f"[DEBUG] repoish links: {repoish}")
-    repos = parse_trending_html(html, since)
-    if not repos:
-        raise RuntimeError(f"no rows parsed for {since} (page structure changed?)")
+        print(f"[INFO] {since}: SSR page unavailable (empty fetch), rendering with Playwright...")
+        html = render_with_playwright(url)
+
+    repos = _extract(html, since)
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "period": since,
@@ -135,6 +130,39 @@ def fetch(since):
         "count": len(repos),
         "repos": repos,
     }
+
+
+def render_with_playwright(url):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(user_agent=_HEADERS["User-Agent"])
+        page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        try:
+            page.wait_for_selector("article", timeout=30000)
+        except Exception:
+            pass
+        html = page.content()
+        browser.close()
+    return html
+
+
+def _extract(html, since):
+    """解析页面 → 结构化条目；无 Box-row 时打印诊断并抛错（不覆盖旧数据）"""
+    if "Box-row" not in html:
+        print(f"[DEBUG] {since}: len={len(html)}")
+        for pat, label in [
+            (r'<article[^>]{0,120}', "article tags"),
+            (r'<h2[^>]*>.{0,200}', "h2 sample"),
+        ]:
+            found = re.findall(pat, html)
+            print(f"[DEBUG] {label}: {len(found)} hits, first: {found[0][:200] if found else '-'}")
+        links = re.findall(r'href="(/[^"]+/[^"]+)"[^>]*>', html)
+        repoish = [l for l in links if "/" in l[1:] and l.count("/") == 2 and "." not in l.split("/")[-1]][:10]
+        print(f"[DEBUG] repoish links: {repoish}")
+        raise RuntimeError(f"no rows parsed for {since} (page structure changed?)")
+    return parse_trending_html(html, since)
 
 
 def main():

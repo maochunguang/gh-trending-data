@@ -28,6 +28,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Playwright
+        # GitHub 对数据中心 IP 分流新版 trending UI（客户端渲染），
+        # fetch_trending.py 检测到 CSR 骨架页时自动用无头浏览器渲染
+        run: |
+          pip install playwright --quiet
+          playwright install chromium --with-deps --quiet
+
       - name: Fetch trending data
         env:
           GH_TOKEN: ${{ github.token }}   # 认证请求，避免匿名数据中心流量被拦
