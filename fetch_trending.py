@@ -137,13 +137,25 @@ def render_with_playwright(url):
 
     with sync_playwright() as p:
         browser = p.chromium.launch(args=["--no-sandbox"])
-        page = browser.new_page(user_agent=_HEADERS["User-Agent"])
+        ctx = browser.new_context(user_agent=_HEADERS["User-Agent"])
+        page = ctx.new_page()
         page.goto(url, wait_until="domcontentloaded", timeout=60000)
         try:
             page.wait_for_selector("article", timeout=30000)
         except Exception:
             pass
         html = page.content()
+        # 深度诊断：渲染后可见文本（判断数据是否真的没渲染）+ 新 UI 结构
+        try:
+            text = page.evaluate("document.body.innerText") or ""
+            print(f"[DEBUG] rendered text sample: {text[:600]!r}")
+            cards = page.evaluate("""() => {
+                const h3 = document.querySelectorAll('h3, h2 a[href*="/"]');
+                return Array.from(h3).slice(0, 5).map(e => e.outerHTML.slice(0, 150));
+            }""")
+            print(f"[DEBUG] heading elements: {cards}")
+        except Exception as e:
+            print(f"[DEBUG] text dump failed: {e}")
         browser.close()
     return html
 
