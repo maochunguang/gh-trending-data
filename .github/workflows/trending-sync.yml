@@ -1,0 +1,56 @@
+# GitHub Trending 定时采集 + 同步到 Gitee
+#
+# 使用方式：把这个文件复制到你的**独立数据仓库**（如 gh-trending-data）的
+# .github/workflows/trending-sync.yml，并把 fetch_trending.py 复制到仓库根目录。
+# 仓库建议设为 public（Actions 免费 + Gitee raw 可匿名拉取）。
+#
+# 频率说明：GitHub Actions schedule 最小间隔 5 分钟；高峰期触发有几分钟随机延迟。
+# trending 是小时级慢变数据，默认 30 分钟足够（改 cron 即可调频）。
+#
+# 需要配置两个 Secrets（仓库 Settings → Secrets and variables → Actions）：
+#   GITEE_USER  —— Gitee 用户名
+#   GITEE_TOKEN —— Gitee 私人令牌（Gitee → 设置 → 私人令牌，勾选 projects 写权限）
+# 对应的 Gitee 仓库需先创建（同 Secrets 中仓库名，如 gh-trending-data）。
+
+name: Sync GitHub Trending
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # 每 30 分钟；最快可到 */5
+  workflow_dispatch:          # 支持手动触发（调试用）
+
+permissions:
+  contents: write
+
+jobs:
+  fetch-and-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch trending data
+        run: python3 fetch_trending.py
+
+      - name: Commit & push to GitHub
+        run: |
+          git config user.name "trending-bot"
+          git config user.email "trending-bot@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then
+            echo "No data changes"
+          else
+            git commit -m "trending: $(date -u +%F_%H:%M UTC)"
+            git push
+          fi
+
+      - name: Push to Gitee
+        env:
+          GITEE_USER: ${{ secrets.GITEE_USER }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          if [ -z "$GITEE_USER" ] || [ -z "$GITEE_TOKEN" ]; then
+            echo "Gitee secrets (GITEE_USER/GITEE_TOKEN) not configured yet — skip sync"
+            exit 0
+          fi
+          git remote add gitee "https://$GITEE_USER:$GITEE_TOKEN@gitee.com/$GITEE_USER/gh-trending-data.git"
+          git push gitee HEAD:main --force 2>&1 | grep -v "GITEE_TOKEN" || true
